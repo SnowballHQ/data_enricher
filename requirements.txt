@@ -2,7 +2,7 @@ streamlit
 pandas
 openpyxl
 python-dotenv
-openai
+openai==0.28.1
 requests
 validators
 google-api-python-client
