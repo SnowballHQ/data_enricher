@@ -37,6 +37,7 @@ class CaseBProcessor:
             df['scraped_content'] = ''
             df['category'] = ''
             df['brand_name'] = ''
+            df['email_question'] = ''
             df['processing_status'] = 'pending'
             df['scraping_status'] = 'pending'
             
@@ -339,15 +340,17 @@ class CaseBProcessor:
                     content = scraped_data.get('combined_content', '')
                     
                     if content and content.strip():
-                        # Extract category and brand name from scraped content using OpenAI
+                        # Extract category, brand name, and email question from scraped content using OpenAI
                         result = self.categorizer.categorize_and_extract_brand("", content, company_name)
                         category = result['category']
                         brand_name = result['brand_name']
+                        email_question = result.get('email_question', 'What are the best local service providers?')
                         
                         # Update row
                         chunk.at[idx, 'scraped_content'] = content[:1000] + "..." if len(content) > 1000 else content
                         chunk.at[idx, 'category'] = category
                         chunk.at[idx, 'brand_name'] = brand_name
+                        chunk.at[idx, 'email_question'] = email_question
                         chunk.at[idx, 'processing_status'] = 'success'
                         chunk.at[idx, 'scraping_status'] = 'success'
                     else:

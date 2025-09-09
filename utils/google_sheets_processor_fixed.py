@@ -202,24 +202,31 @@ class GoogleSheetsProcessor:
         return False
     
     def _map_input_columns(self, headers: List[str]) -> Dict[str, str]:
-        """Map input columns based on header names"""
+        """Map input columns based on header names - supports both Case A and Case B"""
         column_mapping = {}
         
-        # Keywords mapping
+        # Keywords mapping (Case A)
         keywords_patterns = ['Company Keywords', 'keywords', 'Keywords', 'tags', 'Tags', 'keyword']
         for i, header in enumerate(headers):
             if header in keywords_patterns or any(pat.lower() in header.lower() for pat in ['keyword', 'tag']):
                 column_mapping['keywords'] = chr(ord('A') + i)
                 break
         
-        # Description mapping
+        # Description mapping (Case A)
         desc_patterns = ['Company Short Description', 'description', 'Description', 'about', 'About', 'summary']
         for i, header in enumerate(headers):
             if header in desc_patterns or any(pat.lower() in header.lower() for pat in ['description', 'desc', 'about', 'summary']):
                 column_mapping['description'] = chr(ord('A') + i)
                 break
         
-        # Company name mapping
+        # Website mapping (Case B)
+        website_patterns = ['Website', 'website', 'URL', 'url', 'Web', 'web', 'Link', 'link', 'Homepage', 'homepage']
+        for i, header in enumerate(headers):
+            if header in website_patterns or any(pat.lower() in header.lower() for pat in ['website', 'url', 'web', 'link', 'homepage']):
+                column_mapping['website'] = chr(ord('A') + i)
+                break
+        
+        # Company name mapping (both Case A and Case B)
         company_patterns = ['Company Name', 'company_name', 'name', 'Name', 'brand', 'Brand', 'company']
         for i, header in enumerate(headers):
             if header in company_patterns or any(pat.lower() in header.lower() for pat in ['company', 'name', 'brand']):
@@ -227,6 +234,84 @@ class GoogleSheetsProcessor:
                 break
         
         return column_mapping
+    
+    def _process_case_b_row(self, website: str, company_name: str, row_number: int, 
+                           enriched_columns: Dict[str, str], sheet_id: str, sheet_name: str) -> Dict[str, str]:
+        """Process a single row for Case B (website + company) with scrapy + OpenAI"""
+        try:
+            # Initialize Case B processor for scraping
+            from utils.case_b_processor import CaseBProcessor
+            case_b_processor = CaseBProcessor(self.categorizer.api_key)
+            
+            # Create a simple DataFrame for the Case B processor
+            import pandas as pd
+            row_df = pd.DataFrame([{
+                'Website': website,
+                'Company Name': company_name if company_name else 'Unknown Company'
+            }])
+            
+            # Process with scrapy + OpenAI
+            processed_df = case_b_processor.process_dataframe(row_df)
+            
+            if len(processed_df) > 0:
+                result_row = processed_df.iloc[0]
+                
+                # Extract results
+                category = result_row.get('category', 'Unknown Category')
+                brand_name = result_row.get('brand_name', company_name if company_name else 'Unknown Brand')
+                email_question = result_row.get('email_question', 'What are the best local service providers?')
+                
+                # Check processing status
+                processing_status = result_row.get('processing_status', 'unknown')
+                if processing_status == 'error':
+                    # Update with error status
+                    self.update_row_status(sheet_id, row_number, f"❌ Error: {category}", enriched_columns, sheet_name)
+                    return {
+                        'category': 'Error',
+                        'brand_name': brand_name,
+                        'email_question': 'Error processing website'
+                    }
+                else:
+                    # Success
+                    return {
+                        'category': category,
+                        'brand_name': brand_name,
+                        'email_question': email_question
+                    }
+            else:
+                # No results returned
+                self.update_row_status(sheet_id, row_number, "❌ No data processed", enriched_columns, sheet_name)
+                return {
+                    'category': 'Unknown Category',
+                    'brand_name': company_name if company_name else 'Unknown Brand',
+                    'email_question': 'What are the best local service providers?'
+                }
+                
+        except Exception as e:
+            # Handle any processing errors
+            error_msg = str(e)[:50]
+            self.update_row_status(sheet_id, row_number, f"❌ Error: {error_msg}", enriched_columns, sheet_name)
+            return {
+                'category': 'Error',
+                'brand_name': company_name if company_name else 'Unknown Brand',
+                'email_question': 'Error processing website'
+            }
+    
+    def _detect_processing_case(self, column_mapping: Dict[str, str]) -> str:
+        """Detect whether to use Case A (keywords+description) or Case B (company+website)"""
+        has_keywords = 'keywords' in column_mapping
+        has_description = 'description' in column_mapping
+        has_website = 'website' in column_mapping
+        has_company = 'company_name' in column_mapping
+        
+        if has_keywords and has_description:
+            return "CASE_A"
+        elif has_website and has_company:
+            return "CASE_B"
+        elif has_website:  # Website without company name still valid for Case B
+            return "CASE_B"
+        else:
+            return "UNKNOWN"
     
     def setup_enriched_headers(self, sheet_id: str, enriched_columns: Dict[str, str], 
                               existing_enriched: bool, sheet_name: str = "Sheet1"):
@@ -337,7 +422,8 @@ class GoogleSheetsProcessor:
                     'row_number': data_start_row + i,  # Track actual row number
                     'keywords': '',
                     'description': '',
-                    'company_name': ''
+                    'company_name': '',
+                    'website': ''
                 }
                 
                 # Extract data based on column mapping
@@ -355,6 +441,11 @@ class GoogleSheetsProcessor:
                     col_index = ord(column_mapping['company_name']) - ord('A')
                     if col_index < len(row):
                         row_data['company_name'] = row[col_index] if row[col_index] else ''
+                
+                if 'website' in column_mapping:
+                    col_index = ord(column_mapping['website']) - ord('A')
+                    if col_index < len(row):
+                        row_data['website'] = row[col_index] if row[col_index] else ''
                 
                 mapped_data.append(row_data)
             
@@ -432,7 +523,7 @@ class GoogleSheetsProcessor:
             range_name = f"{sheet_name}!{enriched_columns['status']}{row_num}"
             
             body = {
-                'values': [[f"❌ Error: {error_msg[:50]}..."]]
+                'values': [[f"❌ Error: {error_msg[:500]}..."]]
             }
             
             self.service.spreadsheets().values().update(
@@ -449,7 +540,7 @@ class GoogleSheetsProcessor:
             return False
     
     def process_sheet_range(self, sheet_id: str, start_row: int, num_rows: int, 
-                           progress_callback=None, sheet_name: str = "Sheet1") -> Dict:
+                           progress_callback=None, sheet_name: str = "Sheet1", processing_mode: str = None) -> Dict:
         """
         Process a range of rows in Google Sheets with real-time updates
         Headers are always detected from row 1, data starts from row 2 or specified start_row
@@ -476,15 +567,32 @@ class GoogleSheetsProcessor:
             column_mapping = header_info['column_mapping']
             enriched_columns = header_info['enriched_columns']
             
-            # Validate required columns
+            # Use manual processing mode or auto-detect
+            if processing_mode == "CASE_A":
+                case_type = "CASE_A"
+            elif processing_mode == "CASE_B":
+                case_type = "CASE_B"
+            else:
+                # Auto-detect (fallback)
+                case_type = self._detect_processing_case(column_mapping)
+            
+            # Validate required columns based on case type
             missing_cols = []
-            if 'keywords' not in column_mapping:
-                missing_cols.append('keywords')
-            if 'description' not in column_mapping:
-                missing_cols.append('description')
+            if case_type == "CASE_A":
+                if 'keywords' not in column_mapping:
+                    missing_cols.append('Company Keywords')
+                if 'description' not in column_mapping:
+                    missing_cols.append('Company Short Description')
+            elif case_type == "CASE_B":
+                if 'website' not in column_mapping:
+                    missing_cols.append('Website')
+                # company_name is optional for Case B
+            else:
+                return {"error": "Could not detect valid data format. Please ensure your sheet has either:\n- Case A: 'Company Keywords' + 'Company Short Description'\n- Case B: 'Website' + 'Company Name' (optional)"}
             
             if missing_cols:
-                return {"error": f"Missing required columns: {', '.join(missing_cols)}"}
+                required_format = "Case A: keywords + description" if case_type == "CASE_A" else "Case B: website + company name"
+                return {"error": f"Missing required columns for {required_format}: {', '.join(missing_cols)}"}
             
             # Step 2: Setup enriched data headers
             existing_enriched = header_info.get('existing_enriched', False)
@@ -541,20 +649,37 @@ class GoogleSheetsProcessor:
                     # Update status to processing
                     self.update_row_status(sheet_id, actual_row_num, "⏳ Processing...", enriched_columns, sheet_name)
                     
-                    # Extract data
-                    keywords = self._clean_text(str(row.get('keywords', '')))
-                    description = self._clean_text(str(row.get('description', '')))
-                    company_context = self._clean_text(str(row.get('company_name', '')))
-                    
-                    # Skip empty rows
-                    if not keywords and not description:
-                        self.update_row_status(sheet_id, actual_row_num, "⏭️ Skipped (empty)", enriched_columns, sheet_name)
-                        skipped_rows.append(actual_row_num)
-                        processed_count += 1
-                        continue
-                    
-                    # Process with OpenAI
-                    result = self.categorizer.categorize_and_extract_brand(keywords, description, company_context)
+                    # Process based on case type
+                    if case_type == "CASE_A":
+                        # Case A: Keywords + Description processing
+                        keywords = self._clean_text(str(row.get('keywords', '')))
+                        description = self._clean_text(str(row.get('description', '')))
+                        company_context = self._clean_text(str(row.get('company_name', '')))
+                        
+                        # Skip empty rows
+                        if not keywords and not description:
+                            self.update_row_status(sheet_id, actual_row_num, "⏭️ Skipped (empty)", enriched_columns, sheet_name)
+                            skipped_rows.append(actual_row_num)
+                            processed_count += 1
+                            continue
+                        
+                        # Process with OpenAI directly
+                        result = self.categorizer.categorize_and_extract_brand(keywords, description, company_context)
+                        
+                    elif case_type == "CASE_B":
+                        # Case B: Website + Company processing (with scrapy)
+                        website = self._clean_text(str(row.get('website', '')))
+                        company_name = self._clean_text(str(row.get('company_name', '')))
+                        
+                        # Skip empty rows
+                        if not website:
+                            self.update_row_status(sheet_id, actual_row_num, "⏭️ Skipped (no website)", enriched_columns, sheet_name)
+                            skipped_rows.append(actual_row_num)
+                            processed_count += 1
+                            continue
+                        
+                        # Process with scrapy + OpenAI
+                        result = self._process_case_b_row(website, company_name, actual_row_num, enriched_columns, sheet_id, sheet_name)
                     
                     # Update results in sheet (same row, new columns)
                     self.update_row_results(

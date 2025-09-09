@@ -150,17 +150,28 @@ def render_processing_section(processor):
     # Instructions
     with st.expander("📋 Processing Instructions"):
         st.markdown("""
-        **Sheet Format Requirements:**
+        **The system automatically detects your data type:**
+        
+        **🔹 Case A: Keywords + Description**
+        - Required headers: "Company Keywords" + "Company Short Description"
+        - Processing: Direct OpenAI categorization
+        - Use for: Companies with existing descriptions
+        
+        **🔹 Case B: Company + Website**
+        - Required headers: "Website" + "Company Name" (optional)
+        - Processing: Website scraping → OpenAI categorization
+        - Use for: Companies you want to research via their websites
+        
+        **📋 Sheet Format:**
         - **Row 1:** Must contain column headers
-        - **Headers detected automatically** (any of these names work):
+        - **Headers detected automatically** (flexible naming):
           - Keywords: "Company Keywords", "keywords", "tags"
           - Description: "Company Short Description", "description", "about"
+          - Website: "Website", "URL", "web", "link"
           - Company: "Company Name", "name", "brand"
         
-        **New columns will be added automatically:**
-        - Category, Brand Name, Email Question, Status
-        
-        **Processing Logic:**
+        **📊 Output:**
+        - New columns added automatically: Category, Brand Name, Email Question, Status
         - Headers always detected from Row 1
         - Data processing starts from Row 2 (or your specified start row)
         - Enriched data added to SAME ROW in NEW COLUMNS
@@ -207,6 +218,21 @@ def render_processing_section(processor):
             max_value=1000,
             help="Number of rows to process"
         )
+    
+    # Data Type Selection
+    st.subheader("🔄 Data Type Selection")
+    processing_mode = st.radio(
+        "Select your data format:",
+        options=["Case A: Keywords + Description", "Case B: Website + Company"],
+        help="Choose based on your sheet columns",
+        horizontal=True
+    )
+    
+    # Show info based on selection
+    if processing_mode == "Case A: Keywords + Description":
+        st.info("📋 **Required columns:** 'Company Keywords' + 'Company Short Description'")
+    else:
+        st.info("🌐 **Required columns:** 'Website' + 'Company Name' (optional)")
     
     # Validation and preview
     if sheet_url:
@@ -286,12 +312,17 @@ def render_processing_section(processor):
                             st.subheader("👀 Data Preview")
                             st.dataframe(preview_df, use_container_width=True)
                             
-                            # Show processing readiness
+                            # Show processing readiness based on selected mode
                             missing_cols = []
-                            if 'keywords' not in mapping:
-                                missing_cols.append('keywords')
-                            if 'description' not in mapping:
-                                missing_cols.append('description')
+                            if processing_mode == "Case A: Keywords + Description":
+                                if 'keywords' not in mapping:
+                                    missing_cols.append('Company Keywords')
+                                if 'description' not in mapping:
+                                    missing_cols.append('Company Short Description')
+                            elif processing_mode == "Case B: Website + Company":
+                                if 'website' not in mapping:
+                                    missing_cols.append('Website')
+                                # company_name is optional for Case B
                             
                             if missing_cols:
                                 st.error(f"❌ Cannot process: Missing required columns: {', '.join(missing_cols)}")
@@ -324,17 +355,24 @@ def render_processing_section(processor):
                 """)
                 
                 if st.button("🚀 Start Processing", type="primary", use_container_width=True):
-                    # Validate again before processing
+                    # Validate again before processing based on selected mode
                     missing_cols = []
-                    if 'keywords' not in mapping:
-                        missing_cols.append('keywords')
-                    if 'description' not in mapping:
-                        missing_cols.append('description')
+                    if processing_mode == "Case A: Keywords + Description":
+                        if 'keywords' not in mapping:
+                            missing_cols.append('Company Keywords')
+                        if 'description' not in mapping:
+                            missing_cols.append('Company Short Description')
+                    elif processing_mode == "Case B: Website + Company":
+                        if 'website' not in mapping:
+                            missing_cols.append('Website')
+                        # company_name is optional for Case B
                     
                     if missing_cols:
                         st.error(f"❌ Cannot process: Missing required columns: {', '.join(missing_cols)}")
                     else:
-                        process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name)
+                        # Convert processing_mode to the format expected by processor
+                        case_type = "CASE_A" if processing_mode == "Case A: Keywords + Description" else "CASE_B"
+                        process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name, case_type)
             else:
                 st.info("👆 Please detect headers first to enable processing")
                 
@@ -343,7 +381,7 @@ def render_processing_section(processor):
     else:
         st.info("👆 Please enter a Google Sheets URL to continue")
 
-def process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name):
+def process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name, case_type):
     """Process Google Sheet with real-time updates"""
     
     # Initialize progress tracking
@@ -403,7 +441,8 @@ def process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name):
                 start_row=start_row,
                 num_rows=num_rows,
                 progress_callback=update_progress,
-                sheet_name=sheet_name
+                sheet_name=sheet_name,
+                processing_mode=case_type
             )
         
         # Display results

@@ -15,6 +15,7 @@ class OpenAICategorizer:
         """Initialize the OpenAI categorizer with API key"""
         # Set the API key for the openai module
         openai.api_key = api_key
+        self.api_key = api_key  # Store as instance attribute for access by other classes
         self._request_lock = threading.Lock()  # Thread safety for rate limiting
     
     def categorize_and_extract_brand(self, keywords: str, description: str, company_context: str = "") -> Dict[str, str]:
@@ -166,12 +167,14 @@ class OpenAICategorizer:
         - Standardize capitalization and formatting
         - Remove "Inc.", "LLC", "Ltd." unless part of the official brand
         
-        For the email question, create a personalized ChatGPT question:
-        - Format: "What are the best [LOCATION] [CATEGORY] brands?" or "What are the best [CATEGORY] in [LOCATION]? if it is a local"
-        - Extract location from description/keywords (city, state, region, service area)
-        - If no specific location found for a local brand, use "local", else make it more specific to their market
-        - Make it natural and conversational
-        - The question should help identify competitors in their space
+        For the email question, create a question their potential customers would ask ChatGPT:
+        - Think about what someone would search for when they need this product/service
+        - Focus on the customer's problem or need, not the company name
+        - Make it a question someone would ask to discover companies like theirs
+        - If it's a local business, include location (city, state, region) in the question
+        - Examples: "What are healthy pasta alternatives for weight loss?", "Where can I find organic dental care in San Francisco?", "Best places to buy eco-friendly camping gear in Colorado?"
+        - Avoid mentioning the specific company name
+        - Make it discovery-focused from a customer perspective
         
         EXAMPLES:
         
@@ -179,28 +182,28 @@ class OpenAICategorizer:
         Output: {{
             "category": "Independent Hardware Stores",
             "brand_name": "CRHWA",
-            "email_question": "What are the best California hardware store brands?"
+            "email_question": "Where can I find independent hardware stores in California that aren't big box retailers?"
         }}
         
         Input: Family shoe store in San Francisco Bay Area
         Output: {{
             "category": "Family Shoe Stores", 
             "brand_name": "Hansen's Shoes",
-            "email_question": "What are the best San Francisco Bay Area shoe store brands?"
+            "email_question": "Best family-owned shoe stores in San Francisco Bay Area with personalized service?"
         }}
         
         Input: RV gear and camping accessories online
         Output: {{
             "category": "RV Camping Gear",
             "brand_name": "Hitched4Fun",
-            "email_question": "What are the best RV camping gear brands?"
+            "email_question": "Where to buy specialized RV camping equipment and accessories online?"
         }}
         
-        Input: Zero-waste refill store in neighborhood
+        Input: Zero-waste refill store in Portland neighborhood
         Output: {{
             "category": "Zero-Waste Refill Stores",
             "brand_name": "Simple",
-            "email_question": "What are the best local zero-waste refill store brands?"
+            "email_question": "Where can I buy household products without packaging in Portland to reduce waste?"
         }}
         
         Return ONLY a valid JSON object with this exact format:
