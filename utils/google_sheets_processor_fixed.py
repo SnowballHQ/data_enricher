@@ -284,7 +284,7 @@ class GoogleSheetsProcessor:
                 return {
                     'category': 'Unknown Category',
                     'brand_name': company_name if company_name else 'Unknown Brand',
-                    'email_question': 'What are the best local service providers?'
+                    'email_question': 'Error processing email question'
                 }
                 
         except Exception as e:
