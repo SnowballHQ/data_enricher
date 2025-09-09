@@ -432,7 +432,7 @@ class GoogleSheetsProcessor:
             range_name = f"{sheet_name}!{enriched_columns['status']}{row_num}"
             
             body = {
-                'values': [[f"❌ Error: {error_msg[:500]}..."]]
+                'values': [[f"❌ Error: {error_msg}"]]
             }
             
             self.service.spreadsheets().values().update(
