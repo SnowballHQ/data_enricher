@@ -37,8 +37,8 @@ def main():
             # Show current configuration
             with st.expander("🔧 Current Settings"):
                 st.write(f"**Model:** {config_manager.get_openai_model()}")
-                st.write(f"**Max Tokens:** {config_manager.get_openai_max_tokens()}")
-                st.write(f"**Temperature:** {config_manager.get_openai_temperature()}")
+                #st.write(f"**Max Tokens:** {config_manager.get_openai_max_tokens()}")
+                #st.write(f"**Temperature:** {config_manager.get_openai_temperature()}")
                 
                 # Option to change API key
                 if st.button("🔄 Change API Key"):

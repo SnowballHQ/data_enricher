@@ -167,9 +167,9 @@ class OpenAICategorizer:
         - Remove "Inc.", "LLC", "Ltd." unless part of the official brand
         
         For the email question, create a personalized ChatGPT question:
-        - Format: "What are the best [LOCATION] [CATEGORY] brands?" or "What are the best [CATEGORY] in [LOCATION]?"
+        - Format: "What are the best [LOCATION] [CATEGORY] brands?" or "What are the best [CATEGORY] in [LOCATION]? if it is a local"
         - Extract location from description/keywords (city, state, region, service area)
-        - If no specific location found, use "local" or make it more specific to their market
+        - If no specific location found for a local brand, use "local", else make it more specific to their market
         - Make it natural and conversational
         - The question should help identify competitors in their space
         

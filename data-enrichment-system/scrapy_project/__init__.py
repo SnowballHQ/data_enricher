@@ -1,1 +1,0 @@
-# Scrapy project for website content extraction

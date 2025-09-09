@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Email template for personalization - now handles dynamic categories
-EMAIL_TEMPLATE = "When we asked ChatGPT about {product_category} brands, it listed several competitors, but {company_name} didn't appear."
+#EMAIL_TEMPLATE = "When we asked ChatGPT about {product_category} brands, it listed several competitors, but {company_name} didn't appear."
 
 # File processing settings
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
