@@ -6,6 +6,7 @@ Streamlit Frontend Application with Google Sheets Integration
 import streamlit as st
 import pandas as pd
 import os
+import time
 from utils.data_processor import DataProcessor
 from utils.case_b_processor import CaseBProcessor
 from utils.config_manager import ConfigManager
@@ -13,7 +14,22 @@ from utils.google_sheets_interface_persistent import render_google_sheets_sectio
 from utils.background_ui import render_background_processing_section
 from config import SUPPORTED_FORMATS
 
+def health_check():
+    """Health check endpoint for heartbeat system"""
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "app": "data-enricher",
+        "version": "1.0.0"
+    }
+
 def main():
+    # Check for health endpoint
+    if st.query_params.get("health") == "check":
+        health_data = health_check()
+        st.json(health_data)
+        return
+    
     st.set_page_config(
         page_title="Product Categorization System",
         page_icon="🏷️",

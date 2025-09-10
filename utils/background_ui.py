@@ -521,6 +521,48 @@ def render_settings(job_manager: BackgroundJobManager):
     
     st.markdown("---")
     
+    # Heartbeat system controls
+    st.subheader("💓 Heartbeat System (Render Free Tier)")
+    
+    heartbeat_status = job_manager.get_heartbeat_status()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💓 Enable Heartbeat", disabled=heartbeat_status['enabled']):
+            job_manager.enable_heartbeat(True)
+            st.success("Heartbeat enabled!")
+            st.rerun()
+    
+    with col2:
+        if st.button("⏸️ Disable Heartbeat", disabled=not heartbeat_status['enabled']):
+            job_manager.enable_heartbeat(False)
+            st.success("Heartbeat disabled!")
+            st.rerun()
+    
+    with col3:
+        # Heartbeat interval control
+        new_interval = st.number_input(
+            "Interval (minutes)",
+            min_value=1,
+            max_value=60,
+            value=heartbeat_status['interval'] // 60,
+            help="How often to send heartbeat requests"
+        )
+        if st.button("🔄 Update Interval"):
+            job_manager.set_heartbeat_interval(new_interval * 60)
+            st.success(f"Interval updated to {new_interval} minutes!")
+            st.rerun()
+    
+    # Heartbeat status display
+    if heartbeat_status['enabled']:
+        st.success(f"✅ Heartbeat active - Interval: {heartbeat_status['interval']//60} minutes")
+        st.info(f"🌐 App URL: {heartbeat_status['app_url']}")
+    else:
+        st.warning("⚠️ Heartbeat disabled - App may sleep on Render free tier")
+    
+    st.markdown("---")
+    
     # Database statistics
     st.subheader("📊 Database Statistics")
     

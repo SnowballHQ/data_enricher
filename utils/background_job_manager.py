@@ -6,6 +6,8 @@ Central orchestration system for managing job queue, workers, and status trackin
 import queue
 import threading
 import time
+import requests
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Callable, Any
 from datetime import datetime, timedelta
@@ -47,6 +49,12 @@ class BackgroundJobManager:
         self.stats = JobStats()
         self.last_stats_update = datetime.now()
         
+        # Heartbeat system for Render
+        self.heartbeat_enabled = True
+        self.heartbeat_interval = 300  # 5 minutes
+        self.heartbeat_thread = None
+        self.app_url = os.getenv('RENDER_APP_URL', 'https://data-enricher.onrender.com')
+        
         # Start the manager
         self.start()
     
@@ -71,6 +79,10 @@ class BackgroundJobManager:
             daemon=True
         )
         self.manager_thread.start()
+        
+        # Start heartbeat thread
+        if self.heartbeat_enabled:
+            self._start_heartbeat()
         
         # Resume any pending jobs from database
         self._resume_pending_jobs()
@@ -504,6 +516,79 @@ class BackgroundJobManager:
                 callback(job_id, progress, message)
             except Exception as e:
                 print(f"❌ Error in progress callback: {e}")
+    
+    def _start_heartbeat(self):
+        """Start heartbeat thread to keep Render app alive"""
+        if self.heartbeat_thread and self.heartbeat_thread.is_alive():
+            return
+        
+        self.heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop,
+            name="Heartbeat",
+            daemon=True
+        )
+        self.heartbeat_thread.start()
+        print("💓 Heartbeat system started")
+    
+    def _heartbeat_loop(self):
+        """Heartbeat loop to prevent Render from sleeping"""
+        while self.is_running and not self.shutdown_event.is_set():
+            try:
+                # Make a request to keep the app alive
+                self._send_heartbeat()
+                
+                # Wait for next heartbeat
+                self.shutdown_event.wait(self.heartbeat_interval)
+                
+            except Exception as e:
+                print(f"❌ Heartbeat error: {e}")
+                # Wait a bit before retrying
+                self.shutdown_event.wait(60)
+    
+    def _send_heartbeat(self):
+        """Send heartbeat request to keep app alive"""
+        try:
+            # Try multiple endpoints to ensure app stays alive
+            endpoints = [
+                f"{self.app_url}/_stcore/health",
+                f"{self.app_url}/",
+                f"{self.app_url}/health"
+            ]
+            
+            for endpoint in endpoints:
+                try:
+                    response = requests.get(endpoint, timeout=10)
+                    if response.status_code == 200:
+                        print(f"💓 Heartbeat sent to {endpoint}")
+                        return
+                except requests.exceptions.RequestException:
+                    continue
+            
+            print("⚠️ All heartbeat endpoints failed")
+            
+        except Exception as e:
+            print(f"❌ Heartbeat request failed: {e}")
+    
+    def set_heartbeat_interval(self, interval_seconds: int):
+        """Set heartbeat interval"""
+        self.heartbeat_interval = max(60, interval_seconds)  # Minimum 1 minute
+        print(f"💓 Heartbeat interval set to {self.heartbeat_interval} seconds")
+    
+    def enable_heartbeat(self, enabled: bool = True):
+        """Enable or disable heartbeat system"""
+        self.heartbeat_enabled = enabled
+        if enabled and self.is_running:
+            self._start_heartbeat()
+        print(f"💓 Heartbeat {'enabled' if enabled else 'disabled'}")
+    
+    def get_heartbeat_status(self) -> dict:
+        """Get heartbeat system status"""
+        return {
+            'enabled': self.heartbeat_enabled,
+            'interval': self.heartbeat_interval,
+            'running': self.heartbeat_thread and self.heartbeat_thread.is_alive(),
+            'app_url': self.app_url
+        }
     
     def __del__(self):
         """Cleanup on destruction"""
