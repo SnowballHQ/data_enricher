@@ -52,7 +52,7 @@ def render_dashboard(job_manager: BackgroundJobManager):
     st.subheader("📊 Processing Dashboard")
     
     # Auto-refresh every 5 seconds
-    if st.checkbox("🔄 Auto-refresh (5s)", value=True):
+    if st.checkbox("🔄 Auto-refresh (5s)", value=False):
         time.sleep(0.1)  # Small delay to allow UI updates
         st.rerun()
     
@@ -342,7 +342,7 @@ def render_job_list(job_manager: BackgroundJobManager):
     st.subheader("📋 Job Management")
     
     # Auto-refresh for running jobs
-    if st.checkbox("🔄 Auto-refresh (3s)", value=True, help="Automatically refresh to show latest job status"):
+    if st.checkbox("🔄 Auto-refresh (3s)", value=False, help="Automatically refresh to show latest job status"):
         time.sleep(0.1)
         st.rerun()
     
