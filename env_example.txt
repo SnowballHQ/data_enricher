@@ -1,10 +1,10 @@
 # OpenAI API Configuration
 # Copy this file to .env and add your actual API key
-OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=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
 
 # Optional: Customize OpenAI settings
 OPENAI_MODEL=gpt-5-nano
-OPENAI_MAX_TOKENS=100
-OPENAI_TEMPERATURE=0.1
+#OPENAI_MAX_TOKENS=100
+#OPENAI_TEMPERATURE=0.1
 
 

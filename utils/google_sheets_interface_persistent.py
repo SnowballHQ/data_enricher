@@ -6,6 +6,7 @@ import streamlit as st
 import json
 import time
 from utils.google_sheets_processor_fixed import GoogleSheetsProcessor
+from utils.background_job_manager import BackgroundJobManager
 
 def render_google_sheets_section(api_key: str):
     """Render the Google Sheets processing section in Streamlit"""
@@ -48,7 +49,7 @@ def render_google_sheets_section(api_key: str):
                 st.write("**Status:** Token will be auto-refreshed on next use")
         
         # Skip to processing section
-        render_processing_section(processor)
+        render_processing_section(processor, api_key)
         
     else:
         # Need authentication
@@ -141,7 +142,7 @@ def render_credentials_upload(processor):
         except Exception as e:
             st.error(f"❌ Error loading credentials: {e}")
 
-def render_processing_section(processor):
+def render_processing_section(processor, api_key):
     """Render the processing section when authenticated"""
     
     st.markdown("---")
@@ -310,7 +311,7 @@ def render_processing_section(processor):
                         
                         if preview_df is not None:
                             st.subheader("👀 Data Preview")
-                            st.dataframe(preview_df, use_container_width=True)
+                            st.dataframe(preview_df, width='stretch')
                             
                             # Show processing readiness based on selected mode
                             missing_cols = []
@@ -354,25 +355,48 @@ def render_processing_section(processor):
                 - {'🔄 Existing columns will be updated' if existing_enriched else '🆕 New columns will be created'}
                 """)
                 
-                if st.button("🚀 Start Processing", type="primary", use_container_width=True):
-                    # Validate again before processing based on selected mode
-                    missing_cols = []
-                    if processing_mode == "Case A: Keywords + Description":
-                        if 'keywords' not in mapping:
-                            missing_cols.append('Company Keywords')
-                        if 'description' not in mapping:
-                            missing_cols.append('Company Short Description')
-                    elif processing_mode == "Case B: Website + Company":
-                        if 'website' not in mapping:
-                            missing_cols.append('Website')
-                        # company_name is optional for Case B
-                    
-                    if missing_cols:
-                        st.error(f"❌ Cannot process: Missing required columns: {', '.join(missing_cols)}")
-                    else:
-                        # Convert processing_mode to the format expected by processor
-                        case_type = "CASE_A" if processing_mode == "Case A: Keywords + Description" else "CASE_B"
-                        process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name, case_type)
+                # Processing buttons
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("🚀 Start Processing", type="primary", width='stretch'):
+                        # Validate again before processing based on selected mode
+                        missing_cols = []
+                        if processing_mode == "Case A: Keywords + Description":
+                            if 'keywords' not in mapping:
+                                missing_cols.append('Company Keywords')
+                            if 'description' not in mapping:
+                                missing_cols.append('Company Short Description')
+                        elif processing_mode == "Case B: Website + Company":
+                            if 'website' not in mapping:
+                                missing_cols.append('Website')
+                            # company_name is optional for Case B
+                        
+                        if missing_cols:
+                            st.error(f"❌ Cannot process: Missing required columns: {', '.join(missing_cols)}")
+                        else:
+                            # Convert processing_mode to the format expected by processor
+                            case_type = "CASE_A" if processing_mode == "Case A: Keywords + Description" else "CASE_B"
+                            process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name, case_type)
+                
+                with col2:
+                    if st.button("🔄 Queue for Background Processing", width='stretch'):
+                        # Validate columns for background processing
+                        missing_cols = []
+                        if processing_mode == "Case A: Keywords + Description":
+                            if 'keywords' not in mapping:
+                                missing_cols.append('Company Keywords')
+                            if 'description' not in mapping:
+                                missing_cols.append('Company Short Description')
+                        elif processing_mode == "Case B: Website + Company":
+                            if 'website' not in mapping:
+                                missing_cols.append('Website')
+                        
+                        if missing_cols:
+                            st.error(f"❌ Cannot queue: Missing required columns: {', '.join(missing_cols)}")
+                        else:
+                            # Queue for background processing
+                            queue_for_background_processing(api_key, sheet_id, sheet_name, processing_mode, start_row, num_rows)
             else:
                 st.info("👆 Please detect headers first to enable processing")
                 
@@ -524,3 +548,53 @@ def process_google_sheet(processor, sheet_id, start_row, num_rows, sheet_name, c
         controls_container.empty()
         progress_bar.empty()
         status_text.empty()
+
+def queue_for_background_processing(api_key: str, sheet_id: str, sheet_name: str, 
+                                  processing_mode: str, start_row: int, num_rows: int):
+    """Queue a job for background processing"""
+    
+    try:
+        # Initialize background job manager
+        if 'background_job_manager' not in st.session_state:
+            st.session_state.background_job_manager = BackgroundJobManager()
+        
+        job_manager = st.session_state.background_job_manager
+        
+        # Convert processing mode to case type
+        case_type = "CASE_A" if processing_mode == "Case A: Keywords + Description" else "CASE_B"
+        
+        # Create background job
+        job_id = job_manager.create_job(
+            sheet_id=sheet_id,
+            sheet_name=sheet_name,
+            case_type=case_type,
+            start_row=start_row,
+            num_rows=num_rows,
+            api_key=api_key,
+            metadata={
+                'created_from_sheets_tab': True,
+                'processing_mode': processing_mode
+            }
+        )
+        
+        # Show success message
+        st.success("✅ Job queued for background processing!")
+        st.info(f"**Job ID:** `{job_id}`")
+        st.info(f"**Status:** Queued - will start processing automatically")
+        
+        # Show next steps
+        st.markdown("""
+        **Next Steps:**
+        1. Go to the **Background Processing** tab to monitor progress
+        2. The job will start processing automatically when a worker is available
+        3. You can continue working on other sheets while this processes in the background
+        """)
+        
+        # Show queue information
+        queue_info = job_manager.get_queue_info()
+        if queue_info.queue_size > 1:
+            st.info(f"📊 **Queue Status:** {queue_info.queue_size} jobs in queue, estimated wait time: {queue_info.estimated_wait_time:.1f} minutes")
+        
+    except Exception as e:
+        st.error(f"❌ Error queuing job for background processing: {str(e)}")
+        st.error("Please try again or use the regular processing option")

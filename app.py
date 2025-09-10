@@ -10,6 +10,7 @@ from utils.data_processor import DataProcessor
 from utils.case_b_processor import CaseBProcessor
 from utils.config_manager import ConfigManager
 from utils.google_sheets_interface_persistent import render_google_sheets_section
+from utils.background_ui import render_background_processing_section
 from config import SUPPORTED_FORMATS
 
 def main():
@@ -138,7 +139,7 @@ def main():
     api_key = config_manager.get_openai_api_key()
     
     # Main content with tabs
-    tab1, tab2, tab3 = st.tabs(["📁 File Upload", "🗒️ Google Sheets", "ℹ️ System Info"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📁 File Upload", "🗒️ Google Sheets", "🔄 Background Processing", "ℹ️ System Info"])
     
     with tab1:
         render_file_upload_section(api_key, config_manager)
@@ -147,6 +148,9 @@ def main():
         render_google_sheets_section(api_key)
     
     with tab3:
+        render_background_processing_section(api_key)
+    
+    with tab4:
         render_system_info_section()
 
 def render_file_upload_section(api_key: str, config_manager):
